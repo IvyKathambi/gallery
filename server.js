@@ -1,56 +1,72 @@
+require('dotenv').config(); // Load environment variables
 const express = require('express');
-const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const path = require('path');
 const config = require('./_config');
 
-// Define routes
-let index = require('./routes/index');
-let image = require('./routes/image');
-
-// Initializing the app
+// Initialize app
 const app = express();
 
-// connecting the database
 
-const MONGODB_URI = process.env.MONGODB_URI || config.mongoURI[app.settings.env]
-mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true  },(err)=>{
-    if (err) {
-        console.log(err)
-    }else{
-        console.log(`Connected to Database: ${MONGODB_URI}`)
-    }
-});
-
-// test if the database has connected successfully
-// let db = mongoose.connection;
-// db.once('open', ()=>{
-//     console.log('Database connected successfully')
-// })
-
-
-
-
-// View Engine
-app.set('view engine', 'ejs');
-
-// Set up the public folder;
-app.use(express.static(path.join(__dirname, 'public')));
-
-// body parser middleware
-app.use(express.json())
-
-
-app.use('/', index);
-app.use('/image', image);
-
-
+const getMongoURI = () => {
+  // Use Render's env var if available, otherwise fallback to config
+  let uri = process.env.MONGODB_URI || config.mongoURI[app.settings.env];
 
  
-const PORT = process.env.PORT || 5000;
-app.listen(PORT,() =>{
-    console.log(`Server is listening at http://localhost:${PORT}`)
+  if (uri.startsWith('mongodb://') && !uri.includes('mongodb+srv://')) {
+    uri = uri.replace('mongodb://', 'mongodb+srv://');
+  }
+
+  return uri;
+};
+
+mongoose.connect(getMongoURI(), {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 30000
+})
+.then(() => {
+  console.log(`Connected to MongoDB at ${mongoose.connection.host}`);
+})
+.catch(err => {
+  console.error('MongoDB connection error:', err.message);
+  process.exit(1); // Exit if DB connection fails
 });
 
 
+app.set('view engine', 'ejs');
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+
+// Import routes
+app.use('/', require('./routes/index'));
+app.use('/image', require('./routes/image'));
+
+
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'UP',
+    dbState: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED'
+  });
+});
+
+// Server startup
+const PORT = 5000;
+// const HOST = process.env.HOST || '0.0.0.0'; 
+
+const server = app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received. Shutting down gracefully...');
+  await mongoose.connection.close(false);
+  console.log('MongoDB connection closed');
+  server.close(() => {
+    console.log('Server shutdown complete.');
+    process.exit(0);
+  });
+});
+console.log(`Render assigned PORT: 5000`);
 module.exports = app;
