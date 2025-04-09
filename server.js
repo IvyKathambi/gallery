@@ -12,6 +12,9 @@ const getMongoURI = () => {
   // Use Render's env var if available, otherwise fallback to config
   let uri = process.env.MONGODB_URI || config.mongoURI[app.settings.env];
 
+  if (!uri){
+    throw new Error(`MongoDB URI is not defined. Please check environment variables or config.`);
+  }
  
   if (uri.startsWith('mongodb://') && !uri.includes('mongodb+srv://')) {
     uri = uri.replace('mongodb://', 'mongodb+srv://');
